@@ -29,8 +29,14 @@ yarn-error.*
 # macOS
 .DS_Store
 *.pem
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
 
 # local env files
+.env
 .env*.local
 
 # typescript

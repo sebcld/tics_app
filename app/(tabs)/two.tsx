@@ -1,14 +1,20 @@
 import { StyleSheet } from 'react-native';
-
-import EditScreenInfo from '@/components/EditScreenInfo';
 import { Text, View } from '@/components/Themed';
+import { useBacksafe } from '@/src/context/BacksafeContext';
 
-export default function TabTwoScreen() {
+export default function MonitorScreen() {
+  const { posture, angle, alertActive } = useBacksafe();
+  const ok = posture === 'ok' && !alertActive;
+  const color = posture === 'alert' || alertActive ? '#ff4d4d' : ok ? '#2ecc71' : '#999';
+  const text = posture === 'alert' || alertActive ? '¡Corrige tu postura!' : ok ? 'Postura Correcta' : 'Monitoreo';
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Tab Two</Text>
-      <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
-      <EditScreenInfo path="app/(tabs)/two.tsx" />
+      <View style={[styles.circle, { backgroundColor: color }]} />
+      <Text style={styles.title}>{text}</Text>
+      {typeof angle === 'number' && (
+        <Text style={styles.subtitle}>Ángulo actual: {angle.toFixed(1)}°</Text>
+      )}
     </View>
   );
 }
@@ -18,14 +24,19 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 16,
+  },
+  circle: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
   },
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
   },
-  separator: {
-    marginVertical: 30,
-    height: 1,
-    width: '80%',
+  subtitle: {
+    fontSize: 16,
+    opacity: 0.8,
   },
 });
