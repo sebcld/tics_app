@@ -3,68 +3,139 @@
 This folder contains an Arduino sketch for an ESP32 that reads 14 FSR sensors through
 a CD74HC4067 multiplexer and sends posture telemetry via BLE to the mobile app.
 
-Features
-- Reads 14 FSRs (channels 0..13) through a 16-channel multiplexer (CD74HC4067).
-- Calibration command (`CALIBRATE`) to set baselines with no load.
-- Periodic JSON notifications with per-sensor normalized values, occupancy and alert flag.
+## Features
+
+- Reads **14 FSRs** (channels 0..13) through a 16-channel multiplexer (CD74HC4067).
+- **Calibration command** (`CALIBRATE`) to set baselines with no load.
+- **Periodic JSON notifications** with:
+  - Per-sensor normalized values (`values[]`)
+  - Occupancy detection (`occupied`)
+  - Single-point “bad posture” detection (`alert`, `maxIndex`, `maxValue`)
+  - Zone analysis for seat/back:
+    - `seatSum`, `backSum`
+    - `seatMaxIndex`, `seatMaxValue`
+    - `backMaxIndex`, `backMaxValue`
+    - `zoneAlert`, `zoneStatus` (`empty`, `neutral`, `leaning_back`, `leaning_forward_or_on_edge`)
 - BLE service & characteristics match the app's `backsafeProtocol` defaults:
   - Service: `0000fff0-0000-1000-8000-00805f9b34fb`
-  - Command char (WRITE): `0000fff1-0000-1000-8000-00805f9b34fb`
+  - Command char (WRITE / WRITE_NR): `0000fff1-0000-1000-8000-00805f9b34fb`
   - Notify char (NOTIFY): `0000fff2-0000-1000-8000-00805f9b34fb`
 
-Wiring (recommended)
-- Use a `CD74HC4067` 16-channel analog multiplexer.
-- Connect FSR outputs to MUX channels 0..13.
-- MUX `SIG` -> ESP32 ADC pin (e.g., `GPIO34`).
-- MUX `S0..S3` -> ESP32 GPIOs (configured in the sketch as `25,26,27,14`).
-- Each FSR should be wired as a voltage divider: one leg to 3.3V and other leg to the SIG node
-  through the FSR, with a fixed resistor (e.g., 10k) to ground — tune resistor to your sensors.
+## Wiring (recommended)
 
-Components
-- ESP32 (any board with ADC pin 34 recommended)
+- Use a `CD74HC4067` 16-channel analog multiplexer.
+- Connect FSR outputs to MUX channels **0..13**.
+- MUX `SIG` -> ESP32 ADC pin (e.g., `GPIO34`).
+- MUX `S0..S3` -> ESP32 GPIOs (configured in the sketch as `25, 26, 27, 14`).
+- Each FSR should be wired as a **voltage divider**:
+  - One leg of the FSR to 3.3V.
+  - The junction (`SIG` node) between FSR and a fixed resistor (e.g. 10k) to GND.
+  - Read the junction with the multiplexer input.
+  - Tune the fixed resistor value to your FSR model and expected pressure range.
+
+Zone mapping in the provided sketch
+- The sketch maps sensors `0..9` (10 sensors) to the seat (`asiento`) and sensors `10..13`
+  (4 sensors) to the backrest (`respaldo`). If your physical wiring is different, update the
+  constants at the top of `backsafe_fsr.ino`:
+  - `SEAT_START` / `SEAT_END` (inclusive)
+  - `BACK_START` / `BACK_END` (inclusive)
+
+Notification JSON and new fields
+- The device sends zone summaries in the notification JSON: `seatSum`, `backSum`,
+  `seatMaxIndex`, `backMaxIndex`, plus `zoneAlert` and `zoneStatus` which indicate
+  if the user is likely leaning back or forward.
+- New fields added for compatibility with the app:
+  - `status`: one of `ok`, `alert`, or `unknown`.
+  - `angle`: approximate tilt estimate in degrees (float). This is an heuristic computed
+    from the left/right balance of the seat sensors and is intended to give the app a
+    coarse orientation metric (about +/-30 degrees range).
+
+Runtime configuration commands (BLE)
+- You can control runtime parameters over BLE by writing text commands to the command
+  characteristic (`CHAR_COMMAND_UUID`). Supported commands:
+  - `CALIBRATE` — re-sample baselines with no load.
+  - `START` / `STOP` — enable/disable periodic telemetry notifications.
+  - `SET <PARAM> <VALUE>` — set a tunable parameter. Supported params:
+    - `READ_INTERVAL_MS` (ms, min ~50)
+    - `ZONE_RATIO` (float)
+    - `HIGH_PRESSURE_RATIO` (float)
+    - `EMA_ALPHA` (float 0..1)
+    Example: `SET READ_INTERVAL_MS 400`
+  - `GET <PARAM>` — query current value. Example: `GET ZONE_RATIO`
+
+The device responds to `SET`/`GET` with a small JSON ACK on the notify characteristic.
+- `BACK_START` / `BACK_END` (inclusive)
+
+The device sends zone summaries in the notification JSON:
+
+- `seatSum`, `backSum`
+- `seatMaxIndex`, `seatMaxValue`
+- `backMaxIndex`, `backMaxValue`
+- `zoneAlert` (boolean)
+- `zoneStatus`:
+  - `"empty"` — no one sitting (overall load below `MIN_OCCUPANCY`)
+  - `"neutral"` — seated but no strong lean detected
+  - `"leaning_back"` — backrest load dominates (beyond `ZONE_RATIO`)
+  - `"leaning_forward_or_on_edge"` — seat load dominates (beyond `ZONE_RATIO`)
+
+## Components
+
+- ESP32 dev board (any with ADC pin 34 recommended)
 - CD74HC4067 multiplexer
-- 14x FSR sensors
-- 14x fixed resistors (10k recommended) for voltage dividers
+- 14× FSR sensors
+- 14× fixed resistors (10k recommended) for voltage dividers
 - Wiring, breadboard or PCB, USB cable
 
-Software dependencies
-- Arduino core for ESP32
-- NimBLE-Arduino library (install via Library Manager) — used in the sketch
+## Software dependencies
 
-Flashing
+- **Arduino core for ESP32**
+- **NimBLE-Arduino** library (install via Arduino Library Manager)
+  - The sketch is written against NimBLE-Arduino’s API (server/characteristic callbacks with `NimBLEConnInfo` etc.).
+  - Using `ESP32 BLE Arduino` instead would require code changes.
+
+## Flashing
+
 1. Open `backsafe_fsr.ino` in Arduino IDE or PlatformIO.
-2. Install `NimBLE-Arduino` (or change to `ESP32 BLE Arduino` if you prefer).
-3. Select your ESP32 board, set correct flash settings, and upload.
+2. Install **NimBLE-Arduino** from Library Manager.
+3. Select your ESP32 board and correct serial port.
+4. Compile and upload the sketch.
 
-How the protocol works
-- The mobile app writes commands (plain text UTF-8) to the command characteristic. Supported
-  commands implemented in the sketch: `CALIBRATE`, `START`, `STOP`.
-  - `CALIBRATE` will sample sensors with no load and store baselines.
-  - `START`/`STOP` toggle periodic telemetry notifications.
-- The peripheral sends notifications containing a compact JSON string. Example:
+## How the protocol works
 
-  {"ts":1234567,"alert":true,"occupied":true,"maxIndex":5,"maxValue":512,"values":[10,20,...]}
+- The mobile app writes commands (plain text UTF-8) to the **command characteristic**  
+  (`0000fff1-0000-1000-8000-00805f9b34fb`).
 
-- The app decodes the BLE characteristic value (the platform provides it base64-encoded; the
-  app decodes base64 and treats the text as UTF-8). `parseNotifyPayload` in the app expects
-  JSON with `angle/alert/status` but will still accept the alert boolean and values array. You
-  can adapt the app parser or the ESP32 payload format if you prefer different fields.
+  Supported commands:
 
-Notes & tuning
-- By default the sketch uses a simple heuristic: if the largest sensor value is greater than
-  `HIGH_PRESSURE_RATIO * mean(others)` then the occupant is considered "badly seated" and
-  `alert=true` is sent. Try `HIGH_PRESSURE_RATIO=1.6..2.2` depending on your cushion layout.
-- To reduce noise, the sketch uses a small EMA smoothing and averages multiple ADC samples.
-- JSON with 14 values can exceed the default ATT MTU (20 bytes); modern phones and BLE stacks
-  will negotiate higher MTU but if you see fragmentation issues reduce payload size (e.g., send
-  only top-k sensors or use a compact binary format).
+  - `CALIBRATE`
+    - Samples sensors with no load and stores baselines.
+    - Resets the EMA smoothing state.
+    - Sends an ACK notification:  
+      `{"cmdAck":"CALIBRATE","ok":true}`
+  - `START`
+    - Enables periodic telemetry notifications.
+  - `STOP`
+    - Disables periodic telemetry notifications.
 
-Testing
-- Use `nRF Connect` (Android/iOS) to inspect advertisement, service and characteristics.
-- From the app: call `scanAndConnect()` then `subscribeNotifications(cb)` to receive telemetry.
-  You can send `writeCommand('CALIBRATE')` from the app to calibrate.
+- The ESP32 sends **notifications** on the **notify characteristic**  
+  (`0000fff2-0000-1000-8000-00805f9b34fb`) containing a compact JSON string.
 
-Next steps / improvements
-- Add binary payload format for high-rate telemetry.
-- Implement left/right and front/back symmetry checks for more precise posture alarms.
-- Persist calibration to SPIFFS or NVS to keep it after reboot.
+  Example payload (fields may be extended, but structure is similar):
+
+  ```json
+  {
+    "ts": 1234567,
+    "alert": true,
+    "zoneAlert": true,
+    "zoneStatus": "leaning_back",
+    "occupied": true,
+    "maxIndex": 5,
+    "maxValue": 512,
+    "seatSum": 1800,
+    "backSum": 950,
+    "seatMaxIndex": 6,
+    "seatMaxValue": 400,
+    "backMaxIndex": 11,
+    "backMaxValue": 350,
+    "values": [10, 20, 30, 40, 50, 512, 60, 70, 80, 90, 100, 110, 120, 130]
+  }

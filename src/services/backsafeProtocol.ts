@@ -34,12 +34,51 @@ export type BacksafeEvent = {
 // Intenta parsear un payload recibido por notificación como JSON
 export function parseNotifyPayload(text: string): BacksafeEvent | null {
   try {
-    const obj = JSON.parse(text);
+    const obj: any = JSON.parse(text);
+
+    // Determine alert flag: explicit alert or zoneAlert
+    let alertFlag: boolean | undefined = undefined;
+    if (typeof obj.alert === 'boolean') alertFlag = obj.alert;
+    else if (typeof obj.zoneAlert === 'boolean') alertFlag = obj.zoneAlert;
+
+    // Determine approximate angle: prefer explicit, else derive from values array
+    let angleVal: number | undefined = undefined;
+    if (typeof obj.angle === 'number') {
+      angleVal = obj.angle;
+    } else if (Array.isArray(obj.values) && obj.values.length > 0) {
+      // assume first up-to-10 values are seat sensors; split left/right
+      const seatCount = Math.min(10, obj.values.length);
+      const leftCount = Math.floor(seatCount / 2);
+      let leftSum = 0;
+      let rightSum = 0;
+      for (let i = 0; i < seatCount; ++i) {
+        const v = Number(obj.values[i]) || 0;
+        if (i < leftCount) leftSum += v; else rightSum += v;
+      }
+      const denom = leftSum + rightSum;
+      if (denom > 0) {
+        angleVal = ((rightSum - leftSum) / denom) * 30.0; // degrees approx
+      }
+    }
+
+    // Determine status
+    let statusVal: 'ok' | 'alert' | 'unknown' = 'unknown';
+    if (obj.status === 'ok' || obj.status === 'alert') {
+      statusVal = obj.status;
+    } else if (alertFlag === true) {
+      statusVal = 'alert';
+    } else if (typeof obj.occupied === 'boolean') {
+      statusVal = obj.occupied ? 'ok' : 'unknown';
+    } else if (Array.isArray(obj.values)) {
+      // if there is measurable pressure, assume ok
+      const sum = obj.values.reduce((acc: number, v: any) => acc + (Number(v) || 0), 0);
+      statusVal = sum > 50 ? 'ok' : 'unknown';
+    }
+
     return {
-      angle: typeof obj.angle === 'number' ? obj.angle : undefined,
-      alert: typeof obj.alert === 'boolean' ? obj.alert : undefined,
-      status:
-        obj.status === 'ok' || obj.status === 'alert' ? obj.status : 'unknown',
+      angle: angleVal,
+      alert: alertFlag,
+      status: statusVal,
     };
   } catch {
     // Como fallback, interpreta cadenas simples: 'ALERT' o 'OK'
