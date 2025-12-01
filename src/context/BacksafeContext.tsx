@@ -1,5 +1,5 @@
 import { BacksafeCommands, parseNotifyPayload } from '@/src/services/backsafeProtocol';
-import { disconnect, scanAndConnect, subscribeNotifications, writeCommand } from '@/src/services/ble';
+import { connectAndSubscribe, disconnect, writeCommand } from '@/src/services/ble';
 import { log } from '@/src/utils/logger';
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import { Device } from 'react-native-ble-plx';
@@ -35,16 +35,30 @@ export function BacksafeProvider({ children }: { children: React.ReactNode }) {
     setConnecting(true);
     setStatusText('Buscando Backsafe por BLE...');
     try {
-      const d = await scanAndConnect();
+      const d = await connectAndSubscribe((text) => {
+        log('Notify callback received:', text);
+        const evt = parseNotifyPayload(text);
+        if (!evt) {
+          log('Parse failed for:', text);
+          return;
+        }
+        log('Parsed event:', JSON.stringify(evt));
+        if (typeof evt.angle === 'number') {
+          log('Setting angle:', evt.angle);
+          setAngle(evt.angle);
+        }
+        if (typeof evt.alert === 'boolean') {
+          log('Setting alert:', evt.alert);
+          setAlertActive(evt.alert);
+        }
+        if (evt.status) {
+          log('Setting posture:', evt.status);
+          setPosture(evt.status);
+        }
+      });
       setDevice(d);
       setStatusText(`Conectado a ${d.name || d.localName || d.id}`);
-      await subscribeNotifications((text) => {
-        const evt = parseNotifyPayload(text);
-        if (!evt) return;
-        if (typeof evt.angle === 'number') setAngle(evt.angle);
-        if (typeof evt.alert === 'boolean') setAlertActive(evt.alert);
-        if (evt.status) setPosture(evt.status);
-      });
+      log('Connection complete, subscription active');
     } catch (e: any) {
       log('BLE connect error', e?.message || String(e));
       setStatusText('Error de conexión BLE');
@@ -59,8 +73,15 @@ export function BacksafeProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function doStart() {
-    await writeCommand(`${BacksafeCommands.START}\n`);
-    setStatusText('Monitoreo iniciado');
+    try {
+      log('Sending START command');
+      await writeCommand(`${BacksafeCommands.START}\n`);
+      setStatusText('Monitoreo iniciado');
+      log('START command sent');
+    } catch (e: any) {
+      log('Error sending START:', e?.message || String(e));
+      setStatusText('Error al iniciar monitoreo');
+    }
   }
 
   async function doStop() {
