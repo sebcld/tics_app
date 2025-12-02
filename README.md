@@ -16,17 +16,19 @@ Esta guía explica cómo ejecutar la aplicación Backsafe TICS en un dispositivo
 
 ### 1. Variables de Entorno
 
-Crea un archivo `.env` en la raíz del proyecto basado en `.env.example`:
+**NOTA: A partir de la versión Bluetooth Classic, las UUIDs BLE ya no son necesarias. La app se conecta automáticamente a dispositivos Backsafe emparejados.**
+
+Crea un archivo `.env` en la raíz del proyecto basado en `.env.example` (si necesitas configuración personalizada):
 
 ```bash
 cp .env.example .env
 ```
 
-Ajusta los valores según tu firmware ESP32:
+### Configuración heredada de BLE (ya no se usa):
 - `EXPO_PUBLIC_BACKSAFE_NAME_PREFIX`: Prefijo del nombre del dispositivo (ej: "Backsafe")
-- `EXPO_PUBLIC_BACKSAFE_SERVICE_UUID`: UUID del servicio BLE
-- `EXPO_PUBLIC_BACKSAFE_CHAR_COMMAND_UUID`: UUID para enviar comandos
-- `EXPO_PUBLIC_BACKSAFE_CHAR_NOTIFY_UUID`: UUID para recibir notificaciones
+- `EXPO_PUBLIC_BACKSAFE_SERVICE_UUID`: UUID del servicio BLE (deprecated)
+- `EXPO_PUBLIC_BACKSAFE_CHAR_COMMAND_UUID`: UUID para enviar comandos (deprecated)
+- `EXPO_PUBLIC_BACKSAFE_CHAR_NOTIFY_UUID`: UUID para recibir notificaciones (deprecated)
 
 ### 2. Iniciar Sesión en Expo
 
@@ -133,30 +135,43 @@ npx expo start --dev-client
 
 La app debería conectarse automáticamente al bundler.
 
-## 🧪 Probar BLE (Bluetooth Low Energy)
+## 🧪 Probar Bluetooth Classic (Bluetooth Serial)
 
-### ⚠️ Limitaciones del Emulador
+### ✅ Cambio importante: Se usa Bluetooth Classic en lugar de BLE
 
-**Importante**: Los emuladores Android **NO soportan BLE real**. Para probar la conexión con tu dispositivo ESP32 necesitarás:
+La app ahora usa **Bluetooth Classic (Serial Port Profile)** en lugar de BLE por razones técnicas:
+- ✅ Sin límite de tamaño de paquete (BLE limitaba a 20 bytes)
+- ✅ Comunicación más simple y directa
+- ✅ Mayor confiabilidad para datos de sensores
+- ⚠️ Requiere emparejamiento previo del ESP32
 
-1. **Un dispositivo Android físico** con Bluetooth 4.0+ (BLE)
-2. **Permisos de ubicación habilitados** (requerido por Android para BLE)
+**Ver documentación completa**: [BLUETOOTH_CLASSIC_MIGRATION.md](./BLUETOOTH_CLASSIC_MIGRATION.md)
 
 ### Configuración en Dispositivo Físico
 
-1. Asegúrate de que el Bluetooth esté habilitado
-2. Concede permisos de ubicación cuando la app los solicite
-3. La app buscará dispositivos que empiecen con el prefijo configurado en `EXPO_PUBLIC_BACKSAFE_NAME_PREFIX`
+1. **Empareja el ESP32 desde Bluetooth del teléfono:**
+   - Ajustes → Bluetooth → Buscar dispositivos
+   - Busca "Backsafe_ESP32"
+   - Solicita PIN: `1234`
+   - Confirma emparejamiento
+
+2. **Habilita Bluetooth** en el teléfono
+
+3. **Abre la app y conecta:**
+   - La app buscará automáticamente el dispositivo emparejado
+   - Debe conectar en ~5 segundos
+   - Recibirá notificaciones cada 3 segundos
 
 ### Verificar Permisos
 
-La app ya tiene configurados los siguientes permisos en `app.json`:
+La app requiere los siguientes permisos para Bluetooth Classic:
 - `BLUETOOTH`
 - `BLUETOOTH_ADMIN`
 - `BLUETOOTH_SCAN`
 - `BLUETOOTH_CONNECT`
-- `ACCESS_COARSE_LOCATION`
 - `ACCESS_FINE_LOCATION`
+
+Estos ya están configurados en `app.json`.
 
 ## 📱 Scripts Útiles
 
@@ -210,8 +225,14 @@ eas build:configure
 
 - [Documentación de Expo Dev Client](https://docs.expo.dev/development/introduction/)
 - [Documentación de EAS Build](https://docs.expo.dev/build/introduction/)
-- [React Native BLE PLX](https://github.com/dotintent/react-native-ble-plx)
+- [React Native Bluetooth Serial](https://github.com/rusel1989/react-native-bluetooth-serial)
 - [Configuración de Android Studio](https://developer.android.com/studio)
+- [ESP32 Bluetooth Classic](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/bluetooth.html)
+
+### Documentación de migración
+- [BLUETOOTH_CLASSIC_MIGRATION.md](./BLUETOOTH_CLASSIC_MIGRATION.md) - Detalles técnicos del cambio
+- [BLE_VS_BLUETOOTH_CLASSIC.md](./BLE_VS_BLUETOOTH_CLASSIC.md) - Comparativa técnica
+- [ESP32_SETUP_GUIDE.md](./ESP32_SETUP_GUIDE.md) - Guía de configuración del firmware
 
 ## 🎯 Flujo de Desarrollo Recomendado
 

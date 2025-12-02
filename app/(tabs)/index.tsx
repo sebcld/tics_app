@@ -3,11 +3,11 @@ import { StyleSheet } from 'react-native';
 import EditScreenInfo from '@/components/EditScreenInfo';
 import { Text, View } from '@/components/Themed';
 import Hello from '@/src/components/Hello';
-import { Button } from 'react-native';
 import { useBacksafe } from '@/src/context/BacksafeContext';
+import { Button } from 'react-native';
 
 export default function TabOneScreen() {
-  const { connecting, connected, statusText, connect, calibrate, startMonitoring, stopMonitoring, disconnect } = useBacksafe();
+  const { connecting, connected, statusText, connect, calibrate, calibratePosture, startMonitoring, stopMonitoring, disconnect } = useBacksafe();
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Hola TICS</Text>
@@ -18,7 +18,8 @@ export default function TabOneScreen() {
         <Button title={connecting ? 'Conectando...' : 'Conectar Backsafe'} onPress={connect} disabled={connecting} />
       ) : (
         <View style={{ gap: 8, width: '100%', marginTop: 12 }}>
-          <Button title="Calibrar Postura" onPress={calibrate} />
+          <Button title="Calibrar Baseline (vacío)" onPress={calibrate} />
+          <Button title="Calibrar Postura Correcta" onPress={calibratePosture} color="#4CAF50" />
           <Button title="Iniciar Monitoreo" onPress={startMonitoring} />
           <Button title="Detener Monitoreo" onPress={stopMonitoring} />
           <Button title="Desconectar" color="#cc3333" onPress={disconnect} />

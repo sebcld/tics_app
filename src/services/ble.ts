@@ -207,9 +207,10 @@ export async function subscribeNotifications(cb: NotifyCallback): Promise<void> 
       }
       // Log raw value (base64) to help debugging
       const raw = characteristic?.value ?? null;
-      log('BLE notify raw', String(raw));
+      log('BLE notify raw base64:', String(raw));
       const value = raw ? b64decode(raw) : '';
-      log('BLE notify decoded', value);
+      log('BLE notify decoded JSON:', value);
+      log('BLE notify length:', value.length, 'bytes');
       cb(value);
     }
   );

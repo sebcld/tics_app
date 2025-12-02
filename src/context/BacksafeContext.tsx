@@ -1,21 +1,21 @@
 import { BacksafeCommands, parseNotifyPayload } from '@/src/services/backsafeProtocol';
-import { connectAndSubscribe, disconnect, writeCommand } from '@/src/services/ble';
+import { connectAndSubscribe, disconnect, writeCommand } from '@/src/services/bluetoothClassic';
 import { log } from '@/src/utils/logger';
 import React, { createContext, useContext, useMemo, useState } from 'react';
-import { Device } from 'react-native-ble-plx';
 
 type PostureStatus = 'unknown' | 'ok' | 'alert';
 
 type Ctx = {
   connecting: boolean;
   connected: boolean;
-  device?: Device | null;
+  device?: any | null;
   statusText: string;
   posture: PostureStatus;
   angle?: number;
   alertActive: boolean;
   connect: () => Promise<void>;
   calibrate: () => Promise<void>;
+  calibratePosture: () => Promise<void>;
   startMonitoring: () => Promise<void>;
   stopMonitoring: () => Promise<void>;
   disconnect: () => Promise<void>;
@@ -25,7 +25,7 @@ const BacksafeContext = createContext<Ctx | null>(null);
 
 export function BacksafeProvider({ children }: { children: React.ReactNode }) {
   const [connecting, setConnecting] = useState(false);
-  const [device, setDevice] = useState<Device | null>(null);
+  const [device, setDevice] = useState<any | null>(null);
   const [statusText, setStatusText] = useState('Desconectado');
   const [posture, setPosture] = useState<PostureStatus>('unknown');
   const [angle, setAngle] = useState<number | undefined>(undefined);
@@ -33,7 +33,7 @@ export function BacksafeProvider({ children }: { children: React.ReactNode }) {
 
   async function doConnect() {
     setConnecting(true);
-    setStatusText('Buscando Backsafe por BLE...');
+    setStatusText('Buscando Backsafe por Bluetooth Classic...');
     try {
       const d = await connectAndSubscribe((text) => {
         log('Notify callback received:', text);
@@ -57,19 +57,38 @@ export function BacksafeProvider({ children }: { children: React.ReactNode }) {
         }
       });
       setDevice(d);
-      setStatusText(`Conectado a ${d.name || d.localName || d.id}`);
+      setStatusText(`Conectado a ${d.name || d.id}`);
       log('Connection complete, subscription active');
     } catch (e: any) {
-      log('BLE connect error', e?.message || String(e));
-      setStatusText('Error de conexión BLE');
+      log('Bluetooth Classic connect error', e?.message || String(e));
+      setStatusText('Error de conexión Bluetooth');
     } finally {
       setConnecting(false);
     }
   }
 
   async function doCalibrate() {
-    await writeCommand(`${BacksafeCommands.CALIBRATE}\n`);
-    setStatusText('Calibración enviada');
+    try {
+      log('Sending CALIBRATE command');
+      await writeCommand('CALIBRATE\n');
+      setStatusText('Calibración de baseline enviada');
+      log('CALIBRATE command sent');
+    } catch (e: any) {
+      log('Error sending CALIBRATE:', e?.message || String(e));
+      setStatusText('Error en calibración');
+    }
+  }
+
+  async function doCalibratePosture() {
+    try {
+      log('Sending CALIBRATE_POSTURE command');
+      await writeCommand('CALIBRATE_POSTURE\n');
+      setStatusText('Calibración de postura enviada - siéntate correctamente');
+      log('CALIBRATE_POSTURE command sent');
+    } catch (e: any) {
+      log('Error sending CALIBRATE_POSTURE:', e?.message || String(e));
+      setStatusText('Error en calibración de postura');
+    }
   }
 
   async function doStart() {
@@ -108,6 +127,7 @@ export function BacksafeProvider({ children }: { children: React.ReactNode }) {
     alertActive,
     connect: doConnect,
     calibrate: doCalibrate,
+    calibratePosture: doCalibratePosture,
     startMonitoring: doStart,
     stopMonitoring: doStop,
     disconnect: doDisconnect,
