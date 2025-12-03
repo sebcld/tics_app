@@ -10,8 +10,8 @@ export default function TabOneScreen() {
   const { connecting, connected, statusText, connect, calibrate, calibratePosture, startMonitoring, stopMonitoring, disconnect } = useBacksafe();
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Hola TICS</Text>
-      <Hello name="TICS" />
+      <Text style={styles.title}>Hola Usuario</Text>
+      <Hello name="Usuario #" />
       <Text style={{ marginTop: 8 }}>{statusText}</Text>
 
       {!connected ? (

@@ -1,25 +1,19 @@
-# Backsafe ESP32 — FSR Array Sketch
+# Backsafe ESP32 - FSR Array Sketch (Bluetooth Classic)
 
-This folder contains an Arduino sketch for an ESP32 that reads 14 FSR sensors through
-a CD74HC4067 multiplexer and sends posture telemetry via BLE to the mobile app.
+Arduino sketch para ESP32 que lee 14 FSR a través de un CD74HC4067 y envía telemetría de postura vía **Bluetooth Classic (SPP/Serial)** a la app móvil. El dispositivo se anuncia como `Backsafe_ESP32` y acepta PIN `1234` para emparejarse. La app también puede conectarse a un servidor WebSocket (mock) para recibir alertas; los datos de sensores siempre viajan por Bluetooth.
 
-## Features
+## Features principales
 
-- Reads **14 FSRs** (channels 0..13) through a 16-channel multiplexer (CD74HC4067).
-- **Calibration command** (`CALIBRATE`) to set baselines with no load.
-- **Periodic JSON notifications** with:
-  - Per-sensor normalized values (`values[]`)
-  - Occupancy detection (`occupied`)
-  - Single-point “bad posture” detection (`alert`, `maxIndex`, `maxValue`)
-  - Zone analysis for seat/back:
-    - `seatSum`, `backSum`
-    - `seatMaxIndex`, `seatMaxValue`
-    - `backMaxIndex`, `backMaxValue`
-    - `zoneAlert`, `zoneStatus` (`empty`, `neutral`, `leaning_back`, `leaning_forward_or_on_edge`)
-- BLE service & characteristics match the app's `backsafeProtocol` defaults:
-  - Service: `0000fff0-0000-1000-8000-00805f9b34fb`
-  - Command char (WRITE / WRITE_NR): `0000fff1-0000-1000-8000-00805f9b34fb`
-  - Notify char (NOTIFY): `0000fff2-0000-1000-8000-00805f9b34fb`
+- **14 FSRs** (canales 0..13) mediante multiplexor CD74HC4067.
+- **Comandos de control** por puerto serie Bluetooth: `START`, `STOP`, `CALIBRATE`, `CALIBRATE_POSTURE`.
+- **Telemetría JSON periódica** (líneas terminadas en `\n`):
+  - `values[]` (sensores)
+  - `seatSum`, `backSum`
+  - `angle` (estimado por balance izquierda/derecha)
+  - `status` (`ok|alert|unknown`)
+  - `alert` / `zoneAlert`
+  - `zoneStatus` (ej. `"leaning_forward_or_on_edge"`, `"leaning_back"`, `"neutral"`)
+- **Bluetooth Classic (Serial Port Profile)**: no se usan servicios BLE.
 
 ## Wiring (recommended)
 
@@ -40,43 +34,17 @@ Zone mapping in the provided sketch
   - `SEAT_START` / `SEAT_END` (inclusive)
   - `BACK_START` / `BACK_END` (inclusive)
 
-Notification JSON and new fields
-- The device sends zone summaries in the notification JSON: `seatSum`, `backSum`,
-  `seatMaxIndex`, `backMaxIndex`, plus `zoneAlert` and `zoneStatus` which indicate
-  if the user is likely leaning back or forward.
-- New fields added for compatibility with the app:
-  - `status`: one of `ok`, `alert`, or `unknown`.
-  - `angle`: approximate tilt estimate in degrees (float). This is an heuristic computed
-    from the left/right balance of the seat sensors and is intended to give the app a
-    coarse orientation metric (about +/-30 degrees range).
+Telemetría JSON
+- `values[]`, `seatSum`, `backSum`
+- `angle` (estimado), `status` (`ok|alert|unknown`)
+- `alert`, `zoneAlert`, `zoneStatus` (texto para mostrar “posicion actual” en la app)
+- Índices/valores máximos: `seatMaxIndex`, `backMaxIndex`, etc.
 
-Runtime configuration commands (BLE)
-- You can control runtime parameters over BLE by writing text commands to the command
-  characteristic (`CHAR_COMMAND_UUID`). Supported commands:
-  - `CALIBRATE` — re-sample baselines with no load.
-  - `START` / `STOP` — enable/disable periodic telemetry notifications.
-  - `SET <PARAM> <VALUE>` — set a tunable parameter. Supported params:
-    - `READ_INTERVAL_MS` (ms, min ~50)
-    - `ZONE_RATIO` (float)
-    - `HIGH_PRESSURE_RATIO` (float)
-    - `EMA_ALPHA` (float 0..1)
-    Example: `SET READ_INTERVAL_MS 400`
-  - `GET <PARAM>` — query current value. Example: `GET ZONE_RATIO`
-
-The device responds to `SET`/`GET` with a small JSON ACK on the notify characteristic.
-- `BACK_START` / `BACK_END` (inclusive)
-
-The device sends zone summaries in the notification JSON:
-
-- `seatSum`, `backSum`
-- `seatMaxIndex`, `seatMaxValue`
-- `backMaxIndex`, `backMaxValue`
-- `zoneAlert` (boolean)
-- `zoneStatus`:
-  - `"empty"` — no one sitting (overall load below `MIN_OCCUPANCY`)
-  - `"neutral"` — seated but no strong lean detected
-  - `"leaning_back"` — backrest load dominates (beyond `ZONE_RATIO`)
-  - `"leaning_forward_or_on_edge"` — seat load dominates (beyond `ZONE_RATIO`)
+Comandos por Bluetooth Serial
+- `START` / `STOP` — inicia/detiene notificaciones periódicas.
+- `CALIBRATE` — recalibra baseline sin carga.
+- `CALIBRATE_POSTURE` — calibra postura correcta (sentarse bien y enviar).
+- `SET <PARAM> <VALUE>` / `GET <PARAM>` — tuning opcional (`READ_INTERVAL_MS`, `ZONE_RATIO`, `EMA_ALPHA`, etc.).
 
 ## Components
 
@@ -89,36 +57,18 @@ The device sends zone summaries in the notification JSON:
 ## Software dependencies
 
 - **Arduino core for ESP32**
-- **NimBLE-Arduino** library (install via Arduino Library Manager)
-  - The sketch is written against NimBLE-Arduino’s API (server/characteristic callbacks with `NimBLEConnInfo` etc.).
-  - Using `ESP32 BLE Arduino` instead would require code changes.
+- **BluetoothSerial** (incluido en el core de ESP32) — no requiere librerías externas.
 
 ## Flashing
 
 1. Open `backsafe_fsr.ino` in Arduino IDE or PlatformIO.
-2. Install **NimBLE-Arduino** from Library Manager.
-3. Select your ESP32 board and correct serial port.
-4. Compile and upload the sketch.
+2. Select your ESP32 board and correct serial port.
+3. Compile and upload the sketch.
 
 ## How the protocol works
 
-- The mobile app writes commands (plain text UTF-8) to the **command characteristic**  
-  (`0000fff1-0000-1000-8000-00805f9b34fb`).
-
-  Supported commands:
-
-  - `CALIBRATE`
-    - Samples sensors with no load and stores baselines.
-    - Resets the EMA smoothing state.
-    - Sends an ACK notification:  
-      `{"cmdAck":"CALIBRATE","ok":true}`
-  - `START`
-    - Enables periodic telemetry notifications.
-  - `STOP`
-    - Disables periodic telemetry notifications.
-
-- The ESP32 sends **notifications** on the **notify characteristic**  
-  (`0000fff2-0000-1000-8000-00805f9b34fb`) containing a compact JSON string.
+- La app escribe comandos en el puerto serie Bluetooth (`\n` al final).
+- El ESP32 envía líneas JSON por el mismo enlace (terminadas en `\n`).
 
   Example payload (fields may be extended, but structure is similar):
 

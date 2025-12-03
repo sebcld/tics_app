@@ -1,6 +1,9 @@
 import { log } from '@/src/utils/logger';
 import { PermissionsAndroid, Platform } from 'react-native';
-import RNBluetoothSerial from 'react-native-bluetooth-serial';
+import RNBluetoothSerialModule from 'react-native-bluetooth-serial';
+
+// Handle default vs named export interop
+const RNBluetoothSerial: any = (RNBluetoothSerialModule as any)?.default ?? RNBluetoothSerialModule;
 
 export type NotifyCallback = (text: string) => void;
 
@@ -164,12 +167,19 @@ export async function subscribeNotifications(cb: NotifyCallback): Promise<void> 
   }
   
   // Leer datos cada 100ms
+  let warnedNoRead = false;
   readingLoop = setInterval(async () => {
     try {
-      const availableBytes = await RNBluetoothSerial.available();
+      const availableBytes = await (RNBluetoothSerial.available?.() ?? Promise.resolve(1));
       
       if (availableBytes > 0) {
-        const data = await RNBluetoothSerial.read();
+        const data =
+          (await RNBluetoothSerial.readFromDevice?.()) ??
+          (await RNBluetoothSerial.read?.());
+        if (!data && !warnedNoRead) {
+          warnedNoRead = true;
+          log('Bluetooth Classic: read* method not available in module');
+        }
         
         if (data && data.length > 0) {
           log('Bluetooth Classic: received', String(data).length, 'bytes');

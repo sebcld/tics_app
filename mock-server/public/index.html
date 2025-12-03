@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Backsafe Mock Sender</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background: #f5f5f5; }
+    h1 { margin-bottom: 8px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    button { padding: 10px 14px; margin: 4px 0; width: 100%; cursor: pointer; border-radius: 6px; border: 1px solid #ccc; }
+    .ok { background: #e8f5e9; border-color: #a5d6a7; }
+    .alert { background: #ffebee; border-color: #ef9a9a; }
+    #status { font-size: 14px; color: #555; }
+    input { width: 100%; padding: 8px; margin: 6px 0 10px; }
+    pre { background: #272822; color: #f8f8f2; padding: 10px; border-radius: 6px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Backsafe Mock Sender</h1>
+  <div class="card">
+    <div id="status">Connecting...</div>
+    <label>WebSocket URL</label>
+    <input id="wsUrl" type="text" value="" />
+    <button onclick="reconnect()">Reconnect</button>
+  </div>
+
+  <div class="card">
+    <h3>Escenarios</h3>
+    <div id="buttons"></div>
+  </div>
+
+  <div class="card">
+    <h3>Último payload enviado</h3>
+    <pre id="lastPayload">{}</pre>
+  </div>
+
+  <script>
+    const scenarios = [
+      { key: 1, label: '1 - Silla vacía (ok)', payload: { alert: false, status: 'ok', angle: 0, zoneAlert: false, zoneStatus: 'neutral', occupied: false } },
+      { key: 2, label: '2 - Centrado (ok)', payload: { alert: false, status: 'ok', angle: 0, zoneAlert: false, zoneStatus: 'neutral', occupied: true } },
+      { key: 3, label: '3 - Inclinado hacia atrás (mala postura)', payload: { alert: true, status: 'alert', angle: -10, zoneAlert: true, zoneStatus: 'Inclinado hacia atrás', occupied: true } },
+      { key: 4, label: '4 - Inclinado hacia adelante (mala postura)', payload: { alert: true, status: 'alert', angle: 10, zoneAlert: true, zoneStatus: 'Inclinado hacia adelante', occupied: true } },
+      { key: 5, label: '5 - Inclinado derecha (mala postura)', payload: { alert: true, status: 'alert', angle: 15, zoneAlert: true, zoneStatus: 'Inclinado derecha', occupied: true } },
+      { key: 6, label: '6 - Inclinado izquierda (mala postura)', payload: { alert: true, status: 'alert', angle: -15, zoneAlert: true, zoneStatus: 'Inclinado izquierda', occupied: true } },
+      { key: 7, label: '7 - Sentado en el borde (mala postura)', payload: { alert: true, status: 'alert', angle: 5, zoneAlert: true, zoneStatus: 'Sentado en el borde', occupied: true } },
+      { key: 8, label: '8 - Postura ligera variación (ok)', payload: { alert: false, status: 'ok', angle: 3, zoneAlert: false, zoneStatus: 'Ligera variación', occupied: true } },
+    ];
+
+    let ws;
+    let clientCount = 0;
+    const statusEl = document.getElementById('status');
+    const wsUrlInput = document.getElementById('wsUrl');
+    const lastPayloadEl = document.getElementById('lastPayload');
+    const buttonsEl = document.getElementById('buttons');
+
+    function connect(url) {
+      statusEl.textContent = 'Connecting to ' + url + ' ...';
+      statusEl.style.color = '#555';
+      
+      if (ws) {
+        ws.close();
+      }
+      
+      ws = new WebSocket(url);
+      
+      ws.onopen = () => {
+        statusEl.textContent = '✅ Connected to ' + url;
+        statusEl.style.color = '#2e7d32';
+        console.log('WebSocket connected');
+      };
+      
+      ws.onclose = (event) => {
+        statusEl.textContent = '❌ Disconnected (code: ' + event.code + ')';
+        statusEl.style.color = '#c62828';
+        console.log('WebSocket closed', event.code, event.reason);
+      };
+      
+      ws.onerror = (e) => {
+        statusEl.textContent = '❌ Error: ' + (e.message || 'Connection failed');
+        statusEl.style.color = '#c62828';
+        console.error('WebSocket error', e);
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'connection') {
+            clientCount = data.clientId || 0;
+            console.log('Server message:', data.message);
+          }
+        } catch (e) {
+          // Ignorar mensajes que no son JSON
+        }
+      };
+    }
+
+    function reconnect() {
+      if (ws) ws.close();
+      connect(wsUrlInput.value);
+    }
+
+    function sendScenario(s) {
+      const ts = Date.now();
+      const payload = { ts, ...s.payload };
+      lastPayloadEl.textContent = JSON.stringify(payload, null, 2);
+      
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(payload));
+        statusEl.textContent = '✅ Message sent to ' + (clientCount > 0 ? clientCount + ' client(s)' : 'server');
+        statusEl.style.color = '#2e7d32';
+        setTimeout(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            statusEl.textContent = '✅ Connected to ' + wsUrlInput.value;
+            statusEl.style.color = '#2e7d32';
+          }
+        }, 2000);
+      } else {
+        statusEl.textContent = '❌ WebSocket not connected';
+        statusEl.style.color = '#c62828';
+      }
+    }
+
+    // Render buttons
+    scenarios.forEach((s) => {
+      const btn = document.createElement('button');
+      btn.textContent = s.label;
+      btn.className = s.payload.alert ? 'alert' : 'ok';
+      btn.onclick = () => sendScenario(s);
+      buttonsEl.appendChild(btn);
+    });
+
+    // Initialize with current host
+    const defaultUrl = `ws://${location.hostname}:4000`;
+    wsUrlInput.value = defaultUrl;
+    wsUrlInput.placeholder = `Ejemplo: ws://192.168.1.100:4000 (para Android)`;
+    connect(defaultUrl);
+    
+    // Mostrar información sobre la IP para Android
+    if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      const info = document.createElement('div');
+      info.style.cssText = 'margin-top: 10px; padding: 8px; background: #e3f2fd; border-radius: 4px; font-size: 12px;';
+      info.innerHTML = `📱 Para Android: Usa esta misma URL (${defaultUrl}) en tu app`;
+      document.querySelector('.card').appendChild(info);
+    }
+  </script>
+</body>
+</html>
